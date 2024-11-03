@@ -119,13 +119,20 @@ read -p "Would you like to set up basic JWT token authentication? (Y/n): " jwt_a
 jwt_answer=${jwt_answer:-y}
 read -p "Would you like to include basic e-mail server configuration? (Y/n): " mail_answer
 mail_answer=${mail_answer:-y}
-django-admin startproject backend && cd backend && python3 manage.py startapp api && mkdir management && mkdir management/commands && touch .gitignore management/commands/create_groups.py
+django-admin startproject backend && cd backend && python3 manage.py startapp api && touch .gitignore
+
+if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
+	mkdir backend/management backend/management/commands && touch backend/management/__init__.py backend/management/commands/__init__.py backend/management/commands/create_groups.py
+fi
 
 echo 'api/migrations/
 api/__pycache__/
-backend/__pycache__/' >> .gitignore
+backend/__pycache__/
+backend/management/__pycache__/
+backend/management/commands/__pycache__/' >> .gitignore
 
-echo "from django.core.management.base import BaseCommand
+if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
+	echo "from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group
 
 class Command(BaseCommand):
@@ -135,7 +142,8 @@ class Command(BaseCommand):
         groups = ['User', 'Administrator']
 
         for group_name in groups:
-            group, created = Group.objects.get(name=group_name)" >> management/commands/create_groups.py
+            group, created = Group.objects.get_or_create(name=group_name)" >> backend/management/commands/create_groups.py
+fi
 
 cd api && rm -rf models.py views.py && touch models.py serializers.py urls.py views.py
 
@@ -250,16 +258,51 @@ class PasswordChangeSerializer(serializers.Serializer):
         return data' >> serializers.py
 fi
 
-echo 'from django.urls import path
-from . import views
-
-urlpatterns = []' >> urls.py
+echo 'from django.urls import path' >> urls.py
+if [[ "$mail_answer" == "y" || "$mail_answer" == "Y" ]] && [[ "$jwt_answer" == "y" || "$jwt     _answer" == "Y" ]]; then
+	echo 'from api.views import NewPasswordView, PasswordResetRequest' >> urls.py
+fi
+if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
+	echo 'from api.views import (
+    CreateUserView,
+    DeleteUserView,
+    ListUserView,
+    UpdateUserRoleView,
+    CustomTokenObtainPairView,
+)
+from rest_framework_simplejwt.views import TokenRefreshView' >> urls.py
+fi
+echo '
+urlpatterns = [' >> urls.py
+if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
+	echo '    path("token/", CustomTokenObtainPairView.as_view(), name="get_token"),
+    path("token/refresh/", TokenRefreshView.as_view(), name="refresh_token"),
+    path("user/register/", CreateUserView.as_view(), name="register_user"),
+    path("user/delete/<int:pk>/", DeleteUserView.as_view(), name="delete_user"),
+    path("users/", ListUserView.as_view(), name="list_users"),
+    path(
+        "user/update/<int:pk>/",
+        UpdateUserRoleView.as_view(),
+        name="update_user_role",
+    ),' >> urls.py
+fi
+if [[ "$mail_answer" == "y" || "$mail_answer" == "Y" ]] && [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
+    echo '    path(
+        "change-password/", PasswordResetRequest.as_view(), name="change_password"
+    ),
+    path(
+        "new-password/<str:uidb64>/<str:token>/",
+        NewPasswordView.as_view(),
+        name="new_password",
+    ),' >> urls.py
+fi
+echo ']' >> urls.py
 
 echo 'from django.shortcuts import render' >> views.py
 if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
 	echo 'from django.contrib.auth.models import User, Group
 from rest_framework import generics, status
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -271,7 +314,7 @@ from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from .serializers import UserSerializer, CustomTokenObtainPairSerializer' >> views.py
 fi
 if [[ "$mail_answer" == "y" || "$mail_answer" == "Y" ]] && [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
-	echo 'from .serializers import PasswordChangeSerializer, PasswordResetRequestSerializer' >> views.py
+	echo 'from .serializers import PasswordResetRequestSerializer' >> views.py
 fi
 if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
 	echo "class CreateUserView(generics.CreateAPIView):
@@ -406,40 +449,13 @@ fi
 
 cd .. && cd backend && rm -rf urls.py && touch urls.py
 echo 'from django.contrib import admin
-from django.urls import path, include' >> urls.py
-if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
-	echo 'from api.views import CreateUserView, DeleteUserView, ListUserView, UpdateUserRoleView, CustomTokenObtainPairView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView' >> urls.py
-fi
-if [[ "$mail_answer" == "y" || "$mail_answer" == "Y" ]]; then
-	echo 'from api.views import NewPasswordView, PasswordResetRequest, CustomTokenObtainPairView' >> urls.py
-fi
-echo '
+from django.urls import path, include
+
 urlpatterns = [
-    path("admin/", admin.site.urls),
-    path("api/", include("api.urls")),
-    path("api-auth/", include("rest_framework.urls")),' >> urls.py
+    path("admin/", admin.site.urls),' >> urls.py
 if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
-	echo 'path("api/token/", CustomTokenObtainPairView.as_view(), name="get_token"),
-    path("api/token/refresh/", TokenRefreshView.as_view(), name="refresh"),    
-    path("api/user/register/", CreateUserView.as_view(), name="register"),
-    path("api/user/delete/<int:pk>/", DeleteUserView.as_view(), name="delete_user"),
-    path("api/users/", ListUserView.as_view(), name="list_users"),
-    path(
-        "api/user/update/<int:pk>/",
-        UpdateUserRoleView.as_view(),
-        name="update_user_role",
-    ),' >> urls.py
-fi
-if [[ "$mail_answer" == "y" || "$mail_answer" == "Y" ]] && [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
-	echo 'path(
-        "api/change-password/", PasswordResetRequest.as_view(), name="change_password"
-    ),
-    path(
-        "api/new-password/<str:uidb64>/<str:token>/",
-        NewPasswordView.as_view(),
-        name="new_password",
-    ),' >> urls.py
+    echo '    path("api/", include("api.urls")),
+    path("api-auth/", include("rest_framework.urls")),' >> urls.py
 fi
 echo ']' >> urls.py
 
@@ -462,7 +478,7 @@ if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
 	" >> requirements.txt
 fi
 
-python3 -m venv venv && . $(pwd)/venv/bin/activate && pip install -r requirements.txt && python3 manage.py backend/management/commands/create_groups.py && deactivate
+python3 -m venv venv && . $(pwd)/venv/bin/activate && pip install -r requirements.txt && deactivate
 SETTINGS_PY="$(pwd)/backend/backend/settings.py"
 
 sed -i "/^from pathlib import Path$/a\\
@@ -475,7 +491,7 @@ sed -i "/^# SECURITY WARNING: keep the secret key used in production secret!/ s/
 sed -i "/^# SECURITY WARNING: don't run with debug turned on in production!/ s/SECURITY/TODO: SECURITY/" "$SETTINGS_PY"
 sed -i "/^ALLOWED_HOSTS = \[/i # TODO: Update ALLOWED_HOSTS for production!" "$SETTINGS_PY"
 sed -i "/^ALLOWED_HOSTS = \[/s/\[\s*/[\n    'localhost', /" "$SETTINGS_PY"
-sed -i "/^INSTALLED_APPS = \[/a \ \ \ \ 'corsheaders',\n \ \ \ 'rest_framework',\n \ \ \ 'api'," "$SETTINGS_PY"
+sed -i "/^INSTALLED_APPS = \[/a \ \ \ \ 'corsheaders',\n \ \ \ 'rest_framework',\n \ \ \ 'api',\n \ \ \ 'backend'," "$SETTINGS_PY"
 sed -i "/^MIDDLEWARE = \[/a \ \ \ \ 'corsheaders.middleware.CorsMiddleware'," "$SETTINGS_PY"
 echo "
 CORS_ALLOW_ALL_ORIGINS = True  # TODO: consider setting this to 'False' and specifying your frontend URL
@@ -1020,7 +1036,11 @@ EMAIL_HOST_PASSWORD="#### #### #### ####"' >> backend/.env
 ./housekeep_project.sh
 
 echo -e "\e[33mInitiating super user creation prompt. You can use this super user to log in to http://localhost:8000/admin/\e[0m" 
-. $(pwd)/venv/bin/activate && python3 backend/manage.py createsuperuser && deactivate
+. $(pwd)/venv/bin/activate && python3 backend/manage.py createsuperuser
+if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
+	python3 backend/manage.py create_groups
+fi
+deactivate
 
 git init
 echo -e "\e[33mScript notice: changing git branch name to 'main'.\e[0m" 
