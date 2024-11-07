@@ -54,16 +54,16 @@ venv/
 # Log files
 *.log' >> .gitignore
 
-echo '# $project_name 
+echo "# $project_name 
 Project generated from a lichenaut script
 
-See `housekeep_project.sh` to blindly maintain your project.
+See \`housekeep_project.sh\` to blindly maintain your project.
 
-See `dev_project.sh` to locally deploy your project.
+See \`dev_project.sh\` to locally deploy your project.
 
 User accounts are set up in a way where only an admin can register new accounts.
 
-Sitemap generator: https://www.xml-sitemaps.com/' >> README.md
+Sitemap generator: https://www.xml-sitemaps.com/" >> README.md
 
 echo '#!/bin/bash
 
@@ -454,8 +454,8 @@ from django.urls import path, include
 urlpatterns = [
     path("admin/", admin.site.urls),' >> urls.py
 if [[ "$jwt_answer" == "y" || "$jwt_answer" == "Y" ]]; then
-    echo '    path("api/", include("api.urls")),
-    path("api-auth/", include("rest_framework.urls")),' >> urls.py
+    echo '    path("api/", include("api.urls"), name="api"),
+    path("api-auth/", include("rest_framework.urls"), name="api-auth"),' >> urls.py
 fi
 echo ']' >> urls.py
 
